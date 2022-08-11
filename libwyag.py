@@ -1,7 +1,6 @@
 import argparse
 import collections
 import configparser
-from genericpath import isdir
 import hashlib
 import os
 import re
@@ -172,7 +171,13 @@ class GitObject(object):
     def deserealise(self, data):
         raise Exception("Unimplemented.")
 
+class GitBlob(GitObject):
+    fmt = b'blob'
+    def serealise(self):
+        return self.blob_data
 
+    def deserealise(self, data):
+        self.blob_data = data
 
 def object_read(repo, sha):
     """Read object object_id from Git repo. Return a 
@@ -224,3 +229,25 @@ def object_write(obj, actually_write=True):
             f.write(zlib.compress(result))
 
     return sha
+
+arg_sub_parser = arg_sub_parsers.add_parser('cat-file',
+                                            help='Provide content or type and size information for repository objects')
+arg_sub_parser.add_argument('type',
+                            metavar='type',
+                            choices=['blob', 'commit', 'tag', 'tree'],
+                            help='Specify the type.')                                          
+
+arg_sub_parser.add_argument('object',
+                            metavar='object',
+                            help='The object to display')
+
+
+def cmd_cat_file(args):
+    repo = repo.find()
+    cat_file(repo, args.object, fmt=args.type.encode())
+
+def cat_file(repo, obj, fmt=None):
+    obj = object_read(repo, object_find(repo, obj, fmt=fmt))
+    sys.stdout.buffer.write(obj.serialise())
+
+    
