@@ -1,17 +1,31 @@
 import argparse
 import collections
 import configparser
+from genericpath import isdir
 import hashlib
 import os
 import re
 import sys
 import zlib 
 
+# TODO;
+# go to the actual web page and verify the code snippets
+
 arg_parser = argparse.ArgumentParser(description="The stupid content tracker.")
 arg_sub_parsers = arg_parser.add_subparsers(title="commands", dest="command")
 arg_sub_parsers.required = True
 
-def main(argv = sys.argv[1:]):
+arg_sub_parser = arg_sub_parsers.add_parser("init", help="initialise a new empty git repository")
+arg_sub_parser.add_argument('path',
+                            metavar="directory",
+                            nargs="?",
+                            default=".",
+                            help="where to create the repository.")
+
+def cmd_init(args):
+    repo_create(args.path)
+
+def main(argv = sys.argv[1:]):  
     args = arg_parser.parse_args(argv)
 
     if args.command == "add": cmd_add(args)
@@ -121,3 +135,92 @@ def repo_default_config():
 
     return ret
 
+def repo_find(path='.', required=True):
+    path = os.path.realpath(path)
+    if os.path.isdir(os.path.join(path, ".git")):
+        return GitRepository(path)
+
+    # if we have not returned, recurse in parent, if w
+    parent = os.path.realpath(os.path.join(path, '..'))
+
+    if parent == path:
+        # Bottom case
+        # os.path.join("/". "..") == "/"
+        # if parent == path. then path is not root
+        if required:
+            raise Exception("No git directory")
+        else:
+            return None
+
+    # recursive case
+    return repo_find(parent, required)
+
+
+class GitObject(object):
+    repo = None
+
+    def __init__(self, repo, data=None ):
+        self.repo = repo
+        if data != None:
+            self.deserealise(self)
+
+    def serealise(self):
+        """This function must be implemented by subclasses"""
+        # some other trash here.
+        raise Exception("Unimplemented.")
+
+    def deserealise(self, data):
+        raise Exception("Unimplemented.")
+
+
+
+def object_read(repo, sha):
+    """Read object object_id from Git repo. Return a 
+    GitObject whose exact type depends on the object"""
+
+    path = repo_file(repo, "objects", sha[0:2], sha[2:1])
+    with open(path, "rb") as f:
+        raw = zlib.decompress(f.read())
+
+        # read object type
+        x = raw.find(b' ')
+        fmt = raw[0:x]
+
+        # read and validate the object size
+        y = raw.find(b'\x00', x)
+        size = int(raw[x:y].decode('ascii'))
+        if size != len(raw)-y-1:
+            raise Exception(f"malformed object {0}: bad length")
+
+        # Pick constructor
+        if fmt == b'commit': c=GitCommit
+        elif fmt == b'tree': c=GitTree
+        elif fmt == b'tag': c=GitTag
+        elif fmt == b'blob': c=GitBlob
+        else:
+            raise Exception(f"unknown type {0} for object {1}")
+
+        # Call constructor and return object
+        return c(repo, raw[y+1:])
+
+def object_find(repo, name, fmt=None, follow=True):
+    return name
+
+def object_write(obj, actually_write=True):
+    # serialise the object data
+    data = obj.serialise()
+    # add header
+    result = obj.fmt + b' ' + str(len(data)).encode() + b'\x00' + data
+
+    # compute hash
+    sha = hashlib.sha1(result).hexdigest()
+
+    if actually_write:
+        # compute the path
+        path = repo_file(obj.repo, "objects", sha[0:2], sha[2:], mkdir=actually_write)
+
+        with open(path, 'wb') as f:
+            # compress anf write
+            f.write(zlib.compress(result))
+
+    return sha
