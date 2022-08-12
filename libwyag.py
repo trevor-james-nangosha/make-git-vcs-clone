@@ -489,5 +489,39 @@ def cmd_ls_tree(args):
             item.sha, item.path.decode("ascii")))
 
 
-         
+arg_sub_parser = arg_sub_parsers.add_parser("checkout", help="Checkout a commit")
+arg_sub_parser.add_argument("commit", help="The commit or tree to checkout.")
+arg_sub_parser.add_argument("path", help="The EMPTY directory to checkout on.")    
+
+def cmd_checkout(args):
+    repo = repo_find()
+
+    obj = object_read(repo, object_find(repo, args.commit))
+
+    # If the object is a commit, we grab its tree
+    if obj.fmt == b'commit':
+        obj = object_read(repo, obj.kvlm[b'tree'].decode("ascii"))
+    
+    # Verify that path is an empty directory
+        if os.path.exists(args.path):
+            if not os.path.isdir(args.path):
+                raise Exception("Not a directory {0}!".format(args.path))
+        if os.listdir(args.path):
+            raise Exception("Not empty {0}!".format(args.path))
+    else:
+        os.makedirs(args.path)
+    
+    tree_checkout(repo, obj, os.path.realpath(args.path).encode())
    
+
+def tree_checkout(repo, tree, path):
+    for item in tree.items:
+        obj = object_read(repo, item.sha)
+        dest = os.path.join(path, item.path)
+    
+    if obj.fmt == b'tree':
+        os.mkdir(dest)
+        tree_checkout(repo, obj, dest)
+    elif obj.fmt == b'blob':
+        with open(dest, 'wb') as f:
+            f.write(obj.blobdata)
