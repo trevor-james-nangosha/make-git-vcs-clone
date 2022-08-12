@@ -293,3 +293,76 @@ def object_hash(fd, fmt, repo=None):
         raise Exception("Unknown type %s!" % fmt)
         
     return object_write(obj, repo)
+
+
+# simple parser for log formats and messages
+# kvlm = key value list with message 
+def kvlm_message(raw, start=0, dict=None):
+    if not dict:
+        dict = collections.OrderedDict()
+        # you cannot declare the argument as dict=Ordereddict() or all
+        # call to the functions will endlessly grow the same dict
+        # 
+    # we search for the next space and the  next new line
+    space = raw.find(b' ', start) 
+    new_line = raw.find(b'\n', start)
+
+    # if space appears before the end, we have a keyword
+
+    # base case
+    # ============
+    # if newline appears first(or there is no space at all, in which case)
+    # find returns -1_, we assume a  blank line. a blank line
+    # means the remainder of the data is in the message    
+
+    if space < 0 or new_line > space:
+        assert(new_line == start)
+        dict[b''] = raw[start+1:]
+        return dict
+    
+    # Recursive case
+    # ==============
+    # we read a key-value pair and recurse for the next.
+    key = raw[start:space]
+
+    # find the end of the value. continuation lines begin with a 
+    # a space. so we loop until we find a '\n' not followed by a space
+    end = start
+    while True:
+        end = raw.find(b'\n', end+1)
+        if raw[end+1] != ord(' '): break 
+
+    # grab the value 
+    # also, drop the leading space on continuation lines 
+    value = raw[space+1:end].replace(b'\n', b'\n')
+
+    # do not overwrite existing data containers 
+    if key in dict:
+        if type(dict[key] == list):
+            dict[key] = [dict[key], value]
+        else:
+            dict[key] = [dict[key], value]
+    else:
+        dict[key] = value
+
+        return kvlm_parse(raw, start=end+1, dict=dict)
+
+def kvlm_serialize(kvlm):
+    ret = b''
+
+    # Output fields
+    for k in kvlm.keys():
+        # Skip the message itself
+        if k == b'': continue
+        val = kvlm[k]
+
+        # Normalize to a list
+        if type(val) != list:
+            val = [ val ]
+        for v in val:
+            ret += k + b' ' + (v.replace(b'\n', b'\n ')) + b'\n'
+    
+    # Append message
+    ret += b'\n' + kvlm[b'']
+    
+    return ret
