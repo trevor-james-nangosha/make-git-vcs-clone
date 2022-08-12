@@ -570,3 +570,37 @@ def show_ref(repo, refs, with_hash=True, prefix=""):
             k))
         else:
             show_ref(repo, v, with_hash=with_hash, prefix="{0}{1}{2}") # find the format tags
+
+
+class GitTag(GitCommit):
+    fmt = b'tag'
+
+arg_sub_parser = arg_sub_parsers.add_parser("tag",
+                                            help="List and create tags")
+
+arg_sub_parser.add_argument("-a",
+                action="store_true",
+                dest="create_tag_object",
+                help="Whether to create a tag object")
+
+arg_sub_parser.add_argument("name",
+                nargs="?",
+                help="The new tag's name")
+
+arg_sub_parser.add_argument("object",
+                default="HEAD",
+                nargs="?",
+                help="The object the new tag will point to")
+
+
+def cmd_tag(args):
+    repo = repo_find()
+    
+    if args.name:
+        tag_create(args.name,
+                args.object,
+                type="object" if args.create_tag_object else "ref")
+    else:
+        refs = ref_list(repo)
+        show_ref(repo, refs["tags"], with_hash=False)
+          
