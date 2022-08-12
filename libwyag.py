@@ -409,3 +409,85 @@ def log_graphviz(repo, sha, seen):
         parent = parent.decode("ascii")
         print ("c_{0} -> c_{1};".format(sha, parent))
         log_graphviz(repo, parent, seen)
+
+class GitTreeLeaf(object):
+    def __init__(self, mode, path, sha):
+        self.mode = mode
+        self.path = path
+        self.sha = sha 
+
+
+def tree_parse_one(raw, start=0):
+    # Find the space terminator of the mode
+    x = raw.find(b' ', start)
+    assert(x-start == 5 or x-start==6)
+
+    # Read the mode
+    mode = raw[start:x]
+
+    # Find the NULL terminator of the path
+    y = raw.find(b'\x00', x)
+    # and read the path
+    path = raw[x+1:y]
+
+    # Read the SHA and convert to an hex string
+    sha = hex(int.from_bytes(raw[y+1:y+21], "big"))[2:] # hex() adds 0x in front,
+    # we don't want that.
+    return y+21, GitTreeLeaf(mode, path, sha)
+
+
+def tree_parse(raw):
+    position = 0
+    max = len(raw)
+    ret = list()
+    while position < max:
+        position, data = tree_parse_one(raw, position)
+        ret.append(data)
+
+    return ret
+
+
+def tree_serialize(obj):
+    #@FIXME Add serializer!
+    ret = b''
+
+    for i in obj.items:
+        ret += i.mode
+        ret += b' '
+        ret += i.path
+        ret += b'\x00'
+        sha = int(i.sha, 16)
+        # @FIXME Does
+        ret += sha.to_bytes(20, byteorder="big")
+
+    return ret
+
+
+class GitTree(GitObject):
+    fmt=b'tree'
+
+    def deserialize(self, data):
+        self.items = tree_parse(data)
+
+    def serialize(self):
+        return tree_serialize(self)
+
+
+arg_sub_parser = arg_sub_parsers.add_parser("ls-tree", help="Pretty-print a tree object")
+arg_sub_parser.add_argument("object",
+                            help="The object to show.")
+
+def cmd_ls_tree(args):
+    repo = repo_find()
+    obj = object_read(repo, object_find(repo, args.object, fmt = b'tree'))
+    
+    for item in obj.items:
+        print("{0} {1} {2}\t{3}".format("0" * (6 - len(item.mode)) + item.mode.decode("ascii"),
+            # Git's ls-tree displays the type
+            # of the object pointed to. We can do that too :)
+            object_read(repo, item.sha).fmt.decode("ascii"),
+            item.sha, item.path.decode("ascii")))
+
+
+         
+   
